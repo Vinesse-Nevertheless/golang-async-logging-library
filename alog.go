@@ -25,17 +25,15 @@ type Alog struct {
 // New creates a new Alog object that writes to the provided io.Writer.
 // If nil is provided the output will be directed to os.Stdout.
 func New(w io.Writer) *Alog {
-	//var msgCh chan string
-	//var errorCh chan error
-	var alog = &Alog{m: new(sync.Mutex)}
-
-	alog.m.Lock()
 	if w == nil {
 		w = os.Stdout
 	}
-	alog.m.Unlock()
-	return &Alog{
-		dest: w,
+
+	return &Alog{ //This is how you assign values to the structs
+		dest:    w,
+		msgCh:   make(chan string),
+		errorCh: make(chan error),
+		m:       &sync.Mutex{},
 	}
 
 	/*
@@ -72,10 +70,14 @@ func (al Alog) formatMessage(msg string) string {
 }
 
 func (al Alog) write(msg string, wg *sync.WaitGroup) {
+	al.m.Lock()
 	fMessage := al.formatMessage(msg)
+	defer al.m.Unlock() //defer unlock even if go panics
 	_, err := al.dest.Write([]byte(fMessage))
 	if err != nil {
-		al.errorCh <- err
+		go func(err error) {
+			al.errorCh <- err
+		}(err)
 	}
 }
 
