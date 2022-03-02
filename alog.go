@@ -25,8 +25,8 @@ type Alog struct {
 // New creates a new Alog object that writes to the provided io.Writer.
 // If nil is provided the output will be directed to os.Stdout.
 func New(w io.Writer) *Alog {
-	var msgCh chan string
-	var errorCh chan error
+	//var msgCh chan string
+	//var errorCh chan error
 	var alog = &Alog{m: new(sync.Mutex)}
 
 	alog.m.Lock()
