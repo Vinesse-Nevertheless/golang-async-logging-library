@@ -30,35 +30,34 @@ func New(w io.Writer) *Alog {
 	}
 
 	return &Alog{ //This is how you assign values to the structs
-		dest:    w,
-		msgCh:   make(chan string),
-		errorCh: make(chan error),
-		m:       &sync.Mutex{},
+		dest:               w,
+		msgCh:              make(chan string),
+		errorCh:            make(chan error),
+		m:                  &sync.Mutex{},
+		shutdownCh:         make(chan struct{}),
+		shutdownCompleteCh: make(chan struct{}),
 	}
-
-	/*
-		alog := Alog{m: new(sync.Mutex)}
-			alog := &Alog{m: &sync.Mutex{}}
-			m.Lock()
-			   	go func(msgCh string) {
-			   		_, err := w.Write([]byte(msgCh))
-			   		if err != nil {
-			   			errorCh <- err
-			   		}
-			   	}(<-msgCh)
-			   	m.Unlock()
-			   	return &Alog{
-			   		dest: w,
-			   	} */
 }
 
 // Start begins the message loop for the asynchronous logger. It should be initiated as a goroutine to prevent
 // the caller from being blocked.
 func (al Alog) Start() {
+	var wg sync.WaitGroup
+Loop: //loop label required to break out of for loop
 	for {
-		go func(message string) {
-			al.write(message, nil)
-		}(<-al.msgCh)
+		select {
+		case <-al.msgCh:
+			wg.Add(1)
+			go func(message string) {
+				al.write(message, &wg)
+			}(<-al.msgCh)
+		case <-al.shutdownCh:
+			wg.Wait()
+			go func() {
+				al.shutdown()
+			}()
+			break Loop
+		}
 	}
 }
 
@@ -74,14 +73,17 @@ func (al Alog) write(msg string, wg *sync.WaitGroup) {
 	fMessage := al.formatMessage(msg)
 	defer al.m.Unlock() //defer unlock even if go panics
 	_, err := al.dest.Write([]byte(fMessage))
+
 	if err != nil {
-		go func(err error) {
-			al.errorCh <- err
-		}(err)
+		al.errorCh <- err
 	}
+	wg.Done()
 }
 
 func (al Alog) shutdown() {
+	close(al.msgCh)
+	al.shutdownCompleteCh <- struct{}{} //This is a signal only channel
+
 }
 
 // MessageChannel returns a channel that accepts messages that should be written to the log.
@@ -99,6 +101,16 @@ func (al Alog) ErrorChannel() <-chan error {
 // Stop shuts down the logger. It will wait for all pending messages to be written and then return.
 // The logger will no longer function after this method has been called.
 func (al Alog) Stop() {
+	al.shutdownCh <- struct{}{} //This is a signal only channel.  It sends a message.
+	var wg sync.WaitGroup
+	wg.Add(1)
+	go func() {
+		_, ok := <-al.shutdownCompleteCh
+		if ok { //if the ok is true it's listening to shutdownCompleteCh and this stop goroutine can stop waiting
+			wg.Done()
+		}
+	}()
+	wg.Wait()
 }
 
 // Write synchronously sends the message to the log output
