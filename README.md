@@ -1,4 +1,5 @@
 # Logging Library with Go
+https://app.pluralsight.com/projects/build-asynchronous-logging-library-with-go
 
 In this project, you'll use Go's concurrency tools to build a fully asynchronous logging package. You'll start with a simple, synchronous logger and add new features which allow log messages to be stored with minimal impact on the performance of your application.
 
